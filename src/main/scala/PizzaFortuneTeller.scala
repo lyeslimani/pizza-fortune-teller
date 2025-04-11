@@ -11,10 +11,40 @@ object PizzaFortuneTeller {
     val filePath = getClass.getResource("/pizza_sales.csv").getPath
     val pizzaSalesData: DataFrame = spark.read.option("header", "true").option("inferSchema", "true").csv(filePath)
 
+    print("PARTIE 1: Nettoyage des données ")
+    print("\nRead Csv \n: ")
+    pizzaSalesData.show()
+
     println("Structure of the entries:")
     pizzaSalesData.printSchema()
     val entriesCount = pizzaSalesData.count()
     println("Total number of entries: " + entriesCount)
+
+
+    val missingValues = pizzaSalesData.select(
+    pizzaSalesData.columns.map(c =>
+      sum(when(col(c).isNull || col(c) === "", 1).otherwise(0)).alias(c)
+      ): _*
+    )
+
+    print("\nValeurs manquantes : \n")
+    missingValues.show(false)
+
+    val dfWithParsedDate = pizzaSalesData.withColumn("parsed_order_date", to_date(col("order_date"), "M/d/yy"))
+
+    val outliers = dfWithParsedDate.filter(
+      col("quantity") <= 0 ||
+        col("unit_price") <= 0 ||
+        col("total_price") <= 0
+    )
+
+    println("Valeurs aberrantes détectées :")
+    outliers.show(false)
+
+    println("On utilise le .describe :")
+    pizzaSalesData.describe().show(false)
+
+    println("PARTIE 2: Statistiques sur le dataset :")
 
     val salesByMonth = pizzaSalesData
       .withColumn("Month", date_format(to_date(col("order_date"), "M/d/yy"), "MMMM"))
@@ -99,37 +129,8 @@ object PizzaFortuneTeller {
     sizeMostSoldByMonth.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathSizeByMonth)
     println(s"Le classement des tailles de pizzas les plus vendues par mois a été exporté vers : $outputPathSizeByMonth")
 
-    print("PARTIE 2: ")
-    print("\nRead Csv \n: ")
-    pizzaSalesData.show()
 
-    val entriesCount = pizzaSalesData.count()
-    print("Nombre total d'entrées : " + entriesCount)
-
-    val missingValues = pizzaSalesData.select(
-      pizzaSalesData.columns.map(c =>
-        sum(when(col(c).isNull || col(c) === "", 1).otherwise(0)).alias(c)
-      ): _*
-    )
-
-    print("\nValeurs manquantes : \n")
-    missingValues.show(false)
-
-    val dfWithParsedDate = pizzaSalesData.withColumn("parsed_order_date", to_date(col("order_date"), "M/d/yy"))
-
-    val outliers = dfWithParsedDate.filter(
-      col("quantity") <= 0 ||
-        col("unit_price") <= 0 ||
-        col("total_price") <= 0
-    )
-
-    println("Valeurs aberrantes détectées :")
-    outliers.show(false)
-
-    println("On utilise le .describe :")
-    pizzaSalesData.describe().show(false)
-
-    println("Restructuration du dataset :")
+    println("PARTIE 3: Restructuration du dataset :")
 
     val ingredientsExploded = dfWithParsedDate
       .withColumn("ingredient", explode(split(col("pizza_ingredients"), ",\\s*")))
@@ -171,6 +172,8 @@ object PizzaFortuneTeller {
 
     newStructureDfFormatted.show(false)
 
-
+    val outputPathRestructured = "output/restructured_pizza_sales.csv"
+    newStructureDfFormatted.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathRestructured)
+    println(s"Les données restructurées ont été exportées vers : $outputPathRestructured")
   }
 }
