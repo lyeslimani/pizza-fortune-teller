@@ -1,5 +1,6 @@
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
 
 object PizzaFortuneTeller {
   def main(args: Array[String]): Unit = {
@@ -16,17 +17,34 @@ object PizzaFortuneTeller {
     // Showing Basic infos of the dataset
     print("Structure of the entries:")
     pizzaSalesData.printSchema()
+
+    print("\nRead Csv \n: ")
+    pizzaSalesData.show()
+
     val entriesCount = pizzaSalesData.count()
     print("Total number of entries: " + entriesCount)
 
+    val missingValues = pizzaSalesData.select(
+      pizzaSalesData.columns.map(c =>
+        sum(when(col(c).isNull || col(c) === "", 1).otherwise(0)).alias(c)
+      ): _*
+    )
 
-    //    // Group by the "weather" column and count occurrences
-    //    val groupedData = pizzaSalesData.groupBy("pizza_id").count().orderBy("pizza_id")
-    //
-    //    // Show the results
-    //    groupedData.show()
-    //
-    //    // Stop the SparkSession
-    //    spark.stop()
+    print("\nMissing values \n: ")
+    missingValues.show(false)
+
+    val dfWithParsedDate = pizzaSalesData.withColumn("parsed_order_date", to_date(col("order_date"), "M/d/yy"))
+
+    val outliers = dfWithParsedDate.filter(
+      col("quantity") <= 0 ||
+        col("unit_price") <= 0 ||
+        col("total_price") <= 0
+    )
+
+    println("Valeurs aberrantes détectées :")
+    outliers.show(false)
+
+    pizzaSalesData.describe().show(false)
+
   }
 }
