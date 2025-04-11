@@ -1,32 +1,96 @@
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 object PizzaFortuneTeller {
   def main(args: Array[String]): Unit = {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
-    val spark = SparkSession.builder().appName("Pizza Sales Analysis").master("local[*]")
-      .getOrCreate()
+    val spark = SparkSession.builder().appName("Pizza Sales Analysis").master("local[*]").getOrCreate()
 
     val filePath = getClass.getResource("/pizza_sales.csv").getPath
-    val pizzaSalesData: DataFrame = spark.read.option("header", "true")
-      .option("inferSchema", "true")
-      .csv(filePath)
+    val pizzaSalesData: DataFrame = spark.read.option("header", "true").option("inferSchema", "true").csv(filePath)
 
-    // Showing Basic infos of the dataset
-    print("Structure of the entries:")
+    println("Structure of the entries:")
     pizzaSalesData.printSchema()
     val entriesCount = pizzaSalesData.count()
-    print("Total number of entries: " + entriesCount)
+    println("Total number of entries: " + entriesCount)
+
+    val salesByMonth = pizzaSalesData
+      .withColumn("Month", date_format(to_date(col("order_date"), "M/d/yy"), "MMMM"))
+      .groupBy("Month")
+      .agg(
+        sum("total_price").alias("Total_Sales"),
+        countDistinct("order_details_id").alias("Pizza_Count")
+      )
+      .orderBy("Month")
+
+    val outputPathMonth = "output/sales_by_month.csv"
+    salesByMonth.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathMonth)
+    println(s"Les résultats des ventes par mois ont été exportés vers : $outputPathMonth")
+
+    val salesByDayOfWeek = pizzaSalesData
+      .withColumn("DayOfWeek", date_format(to_date(col("order_date"), "M/d/yy"), "EEEE"))
+      .groupBy("DayOfWeek")
+      .agg(
+        sum("total_price").alias("Total_Sales"),
+        countDistinct("order_details_id").alias("Pizza_Count")
+      )
+      .orderBy("DayOfWeek")
+
+    val outputPathDayOfWeek = "output/sales_by_day_of_week.csv"
+    salesByDayOfWeek.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathDayOfWeek)
+    println(s"Les résultats des ventes par jour de la semaine ont été exportés vers : $outputPathDayOfWeek")
+
+    val mostSoldPizza = pizzaSalesData
+      .groupBy("pizza_name")
+      .agg(count("order_details_id").alias("Sales_Count"))
+      .orderBy(desc("Sales_Count"))
+      .limit(1)
+
+    println("Pizza la plus vendue :")
+    mostSoldPizza.show(false)
+
+    val sizeMostSold = pizzaSalesData
+      .groupBy("pizza_size")
+      .agg(count("order_details_id").alias("Sales_Count"))
+      .orderBy(desc("Sales_Count"))
+
+    sizeMostSold.show(1)
+
+    val pizzaMostSoldByMonth = pizzaSalesData
+      .withColumn("Month", date_format(to_date(col("order_date"), "M/d/yy"), "MMMM"))
+      .groupBy("Month", "pizza_name")
+      .agg(count("order_details_id").alias("Sales_Count"))
+      .withColumn("Rank", row_number().over(
+        Window.partitionBy("Month").orderBy(desc("Sales_Count"))
+      ))
+      .filter(col("Rank") === 1)
+      .drop("Rank")
+
+    pizzaMostSoldByMonth.show(false)
 
 
-    //    // Group by the "weather" column and count occurrences
-    //    val groupedData = pizzaSalesData.groupBy("pizza_id").count().orderBy("pizza_id")
-    //
-    //    // Show the results
-    //    groupedData.show()
-    //
-    //    // Stop the SparkSession
-    //    spark.stop()
+    val outputPathPizzaByMonth = "output/most_sold_pizza_by_month.csv"
+    pizzaMostSoldByMonth.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathPizzaByMonth)
+    println(s"Le classement des pizzas les plus vendues par mois a été exporté vers : $outputPathPizzaByMonth")
+
+    val sizeMostSoldByMonth = pizzaSalesData
+      .withColumn("Month", date_format(to_date(col("order_date"), "M/d/yy"), "MMMM"))
+      .groupBy("Month", "pizza_size")
+      .agg(count("order_details_id").alias("Sales_Count"))
+      .withColumn("Rank", row_number().over(
+        Window.partitionBy("Month").orderBy(desc("Sales_Count"))
+      ))
+      .filter(col("Rank") === 1)
+      .drop("Rank")
+
+    println("Taille de pizza la plus vendue par mois :")
+    sizeMostSoldByMonth.show(false)
+
+    val outputPathSizeByMonth = "output/most_sold_size_by_month.csv"
+    sizeMostSoldByMonth.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathSizeByMonth)
+    println(s"Le classement des tailles de pizzas les plus vendues par mois a été exporté vers : $outputPathSizeByMonth")
   }
 }
