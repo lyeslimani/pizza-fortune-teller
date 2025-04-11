@@ -22,7 +22,7 @@ object PizzaFortuneTeller {
       .groupBy("Month")
       .agg(
         sum("total_price").alias("Total_Sales"),
-        countDistinct("order_details_id").alias("Pizza_Count")
+        sum(col("quantity")).alias("Pizza_Count")
       )
       .orderBy("Month")
 
@@ -35,7 +35,7 @@ object PizzaFortuneTeller {
       .groupBy("DayOfWeek")
       .agg(
         sum("total_price").alias("Total_Sales"),
-        countDistinct("order_details_id").alias("Pizza_Count")
+        sum(col("quantity")).alias("Pizza_Count")
       )
       .orderBy("DayOfWeek")
 
@@ -45,7 +45,9 @@ object PizzaFortuneTeller {
 
     val mostSoldPizza = pizzaSalesData
       .groupBy("pizza_name")
-      .agg(count("order_details_id").alias("Sales_Count"))
+      .agg(
+        sum(col("quantity")).alias("Sales_Count")
+      )
       .orderBy(desc("Sales_Count"))
       .limit(1)
 
@@ -54,7 +56,9 @@ object PizzaFortuneTeller {
 
     val sizeMostSold = pizzaSalesData
       .groupBy("pizza_size")
-      .agg(count("order_details_id").alias("Sales_Count"))
+      .agg(
+        sum(col("quantity")).alias("Sales_Count")
+      )
       .orderBy(desc("Sales_Count"))
 
     sizeMostSold.show(1)
@@ -62,7 +66,9 @@ object PizzaFortuneTeller {
     val pizzaMostSoldByMonth = pizzaSalesData
       .withColumn("Month", date_format(to_date(col("order_date"), "M/d/yy"), "MMMM"))
       .groupBy("Month", "pizza_name")
-      .agg(count("order_details_id").alias("Sales_Count"))
+      .agg(
+        sum(col("quantity")).alias("Sales_Count")
+      )
       .withColumn("Rank", row_number().over(
         Window.partitionBy("Month").orderBy(desc("Sales_Count"))
       ))
@@ -71,7 +77,6 @@ object PizzaFortuneTeller {
 
     pizzaMostSoldByMonth.show(false)
 
-
     val outputPathPizzaByMonth = "output/most_sold_pizza_by_month.csv"
     pizzaMostSoldByMonth.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathPizzaByMonth)
     println(s"Le classement des pizzas les plus vendues par mois a été exporté vers : $outputPathPizzaByMonth")
@@ -79,7 +84,9 @@ object PizzaFortuneTeller {
     val sizeMostSoldByMonth = pizzaSalesData
       .withColumn("Month", date_format(to_date(col("order_date"), "M/d/yy"), "MMMM"))
       .groupBy("Month", "pizza_size")
-      .agg(count("order_details_id").alias("Sales_Count"))
+      .agg(
+        sum(col("quantity")).alias("Sales_Count")
+      )
       .withColumn("Rank", row_number().over(
         Window.partitionBy("Month").orderBy(desc("Sales_Count"))
       ))
