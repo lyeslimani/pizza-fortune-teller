@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="pizza-fortune-teller_DefaultArtifact">
+    <output-path>$PROJECT_DIR$/out/artifacts/pizza_fortune_teller_DefaultArtifact</output-path>
+    <root id="archive" name="default_artifact.jar">
+      <element id="module-output" name="pizza-fortune-teller" />
+    </root>
+  </artifact>
+</component>
