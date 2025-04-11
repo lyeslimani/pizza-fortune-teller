@@ -9,7 +9,7 @@ object PizzaFortuneTeller {
     val spark = SparkSession.builder().appName("Pizza Sales Analysis").master("local[*]")
       .getOrCreate()
 
-    val filePath = getClass.getResource("/pizza_sales.csv").getPath
+    val filePath = "src/main/resources/pizza_sales.csv"
     val pizzaSalesData: DataFrame = spark.read.option("header", "true")
       .option("inferSchema", "true")
       .csv(filePath)
@@ -49,7 +49,15 @@ object PizzaFortuneTeller {
 
     println("Restructuration du dataset :")
 
-    val result = dfWithParsedDate.groupBy("parsed_order_date")
+    val ingredientsExploded = dfWithParsedDate
+      .withColumn("ingredient", explode(split(col("pizza_ingredients"), ",\\s*")))
+
+    val ingredientsAgg = ingredientsExploded
+      .groupBy("parsed_order_date")
+      .pivot("ingredient")
+      .sum("quantity")
+
+    val newStructuredDf = dfWithParsedDate.groupBy("parsed_order_date")
       .agg(
         sum("total_price").alias("total_price_sum"),
         sum("quantity").alias("quantity_sum"),
@@ -61,7 +69,7 @@ object PizzaFortuneTeller {
         "left"
       )
       .join(
-        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_ingredients").sum("quantity"),
+        ingredientsAgg,
         Seq("parsed_order_date"),
         "left"
       )
@@ -76,9 +84,9 @@ object PizzaFortuneTeller {
         "left"
       )
 
-    result.show(false)
+    val newStructureDfFormatted = newStructuredDf.withColumn("total_price_sum", format_number(col("total_price_sum"), 2))
 
-
+    newStructureDfFormatted.show(false)
 
   }
 }
