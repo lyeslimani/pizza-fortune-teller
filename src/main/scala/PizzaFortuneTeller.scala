@@ -22,7 +22,7 @@ object PizzaFortuneTeller {
     pizzaSalesData.show()
 
     val entriesCount = pizzaSalesData.count()
-    print("Total number of entries: " + entriesCount)
+    print("Nombre total d'entrées : " + entriesCount)
 
     val missingValues = pizzaSalesData.select(
       pizzaSalesData.columns.map(c =>
@@ -30,7 +30,7 @@ object PizzaFortuneTeller {
       ): _*
     )
 
-    print("\nMissing values \n: ")
+    print("\nValeurs manquantes : \n")
     missingValues.show(false)
 
     val dfWithParsedDate = pizzaSalesData.withColumn("parsed_order_date", to_date(col("order_date"), "M/d/yy"))
@@ -44,7 +44,41 @@ object PizzaFortuneTeller {
     println("Valeurs aberrantes détectées :")
     outliers.show(false)
 
+    println("On utilise le .describe :")
     pizzaSalesData.describe().show(false)
+
+    println("Restructuration du dataset :")
+
+    val result = dfWithParsedDate.groupBy("parsed_order_date")
+      .agg(
+        sum("total_price").alias("total_price_sum"),
+        sum("quantity").alias("quantity_sum"),
+        countDistinct("order_id").alias("order_count")
+      )
+      .join(
+        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_name").sum("quantity"),
+        Seq("parsed_order_date"),
+        "left"
+      )
+      .join(
+        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_ingredients").sum("quantity"),
+        Seq("parsed_order_date"),
+        "left"
+      )
+      .join(
+        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_size").sum("quantity"),
+        Seq("parsed_order_date"),
+        "left"
+      )
+      .join(
+        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_category").sum("quantity"),
+        Seq("parsed_order_date"),
+        "left"
+      )
+
+    result.show(false)
+
+
 
   }
 }
