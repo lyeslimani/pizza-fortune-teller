@@ -1,11 +1,10 @@
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{col, countDistinct, date_format, desc, explode, format_number, row_number, split, sum, to_date, when}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 object PizzaFortuneTeller {
   def main(args: Array[String]): Unit = {
-
     Logger.getLogger("org").setLevel(Level.ERROR)
     val spark = SparkSession.builder().appName("Pizza Sales Analysis").master("local[*]").getOrCreate()
 
@@ -99,5 +98,79 @@ object PizzaFortuneTeller {
     val outputPathSizeByMonth = "output/most_sold_size_by_month.csv"
     sizeMostSoldByMonth.repartition(1).write.option("header", "true").mode("overwrite").csv(outputPathSizeByMonth)
     println(s"Le classement des tailles de pizzas les plus vendues par mois a été exporté vers : $outputPathSizeByMonth")
+
+    print("PARTIE 2: ")
+    print("\nRead Csv \n: ")
+    pizzaSalesData.show()
+
+    val entriesCount = pizzaSalesData.count()
+    print("Nombre total d'entrées : " + entriesCount)
+
+    val missingValues = pizzaSalesData.select(
+      pizzaSalesData.columns.map(c =>
+        sum(when(col(c).isNull || col(c) === "", 1).otherwise(0)).alias(c)
+      ): _*
+    )
+
+    print("\nValeurs manquantes : \n")
+    missingValues.show(false)
+
+    val dfWithParsedDate = pizzaSalesData.withColumn("parsed_order_date", to_date(col("order_date"), "M/d/yy"))
+
+    val outliers = dfWithParsedDate.filter(
+      col("quantity") <= 0 ||
+        col("unit_price") <= 0 ||
+        col("total_price") <= 0
+    )
+
+    println("Valeurs aberrantes détectées :")
+    outliers.show(false)
+
+    println("On utilise le .describe :")
+    pizzaSalesData.describe().show(false)
+
+    println("Restructuration du dataset :")
+
+    val ingredientsExploded = dfWithParsedDate
+      .withColumn("ingredient", explode(split(col("pizza_ingredients"), ",\\s*")))
+
+    val ingredientsAgg = ingredientsExploded
+      .groupBy("parsed_order_date")
+      .pivot("ingredient")
+      .sum("quantity")
+
+    val newStructuredDf = dfWithParsedDate.groupBy("parsed_order_date")
+      .agg(
+        sum("total_price").alias("total_price_sum"),
+        sum("quantity").alias("quantity_sum"),
+        countDistinct("order_id").alias("order_count")
+      )
+      .join(
+        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_name").sum("quantity"),
+        Seq("parsed_order_date"),
+        "left"
+      )
+      .join(
+        ingredientsAgg,
+        Seq("parsed_order_date"),
+        "left"
+      )
+      .join(
+        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_size").sum("quantity"),
+        Seq("parsed_order_date"),
+        "left"
+      )
+      .join(
+        dfWithParsedDate.groupBy("parsed_order_date").pivot("pizza_category").sum("quantity"),
+        Seq("parsed_order_date"),
+        "left"
+      )
+
+    val newStructureDfFormatted = newStructuredDf.withColumn("total_price_sum", format_number(col("total_price_sum"), 2))
+      .orderBy(col("parsed_order_date").asc)
+
+    newStructureDfFormatted.show(false)
+
+
   }
 }
