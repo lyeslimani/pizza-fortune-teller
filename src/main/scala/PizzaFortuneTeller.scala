@@ -87,7 +87,7 @@ object PizzaFortuneTeller {
     val newStructureDfFormatted = newStructuredDf.withColumn("total_price_sum", format_number(col("total_price_sum"), 2))
       .orderBy(col("parsed_order_date").asc)
 
-    newStructureDfFormatted.show(false)
+    newStructureDfFormatted.show(31, false)
 
   }
 }
