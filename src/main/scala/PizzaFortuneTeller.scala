@@ -57,6 +57,13 @@ object PizzaFortuneTeller {
       .pivot("ingredient")
       .sum("quantity")
 
+    val ingredientsAggRenamed = ingredientsAgg.columns.map {
+      case "parsed_order_date" => col("parsed_order_date")
+      case other => col(other).alias(s"ingredient_$other")
+    }
+
+    val ingredientsAggFinal = ingredientsAgg.select(ingredientsAggRenamed: _*)
+
     val newStructuredDf = dfWithParsedDate.groupBy("parsed_order_date")
       .agg(
         sum("total_price").alias("total_price_sum"),
@@ -69,7 +76,7 @@ object PizzaFortuneTeller {
         "left"
       )
       .join(
-        ingredientsAgg,
+        ingredientsAggFinal,
         Seq("parsed_order_date"),
         "left"
       )
@@ -87,7 +94,12 @@ object PizzaFortuneTeller {
     val newStructureDfFormatted = newStructuredDf.withColumn("total_price_sum", format_number(col("total_price_sum"), 2))
       .orderBy(col("parsed_order_date").asc)
 
-    newStructureDfFormatted.show(31, false)
-
+    newStructureDfFormatted
+      .coalesce(1)
+      .write
+      .option("header", "true")
+      .option("delimiter", ",")
+      .mode("overwrite")
+      .csv("output/pizza_restructured_csv")
   }
 }
